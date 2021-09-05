@@ -10,7 +10,10 @@ python = "^3.8"
 cryptography = "^3.4.7"
 
 [tool.poetry.dev-dependencies]
+coverage = {version = "^5.5", extras = ["toml"]}
+pylint = "^2.10.2"
 pytest = "^6.2.4"
+pytest-cov = "^2.12.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
