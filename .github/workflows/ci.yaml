@@ -1,0 +1,36 @@
+---
+name: Testing
+
+on: [push, pull_request]
+
+jobs:
+  pytest:
+    name: Python ${{ matrix.python }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}-latest
+    strategy:
+      matrix:
+        os: [ubuntu, windows, macos]
+        python: [3.8, 3.9]
+    steps:
+      - name: Check out code from GitHub
+        uses: actions/checkout@v2.3.4
+      - name: Set up Python ${{ matrix.python }}
+        id: python
+        uses: actions/setup-python@v2.2.2
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install workflow dependencies
+        run: |
+          pip install -r .github/workflows/requirements.txt
+          poetry config virtualenvs.create true
+          poetry config virtualenvs.in-project true
+      - name: Install dependencies
+        run: poetry install --no-interaction
+      - name: Run pytest
+        run: poetry run pytest --cov hpke tests
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v2.2.4
+        with:
+          name: coverage-${{ matrix.python }}-${{ matrix.os }}
+          path: .coverage
+
