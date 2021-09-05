@@ -17,6 +17,8 @@ def find_suite(kem_id, kdf_id, aead_id):
         hpke.Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA256__AES_128_GCM,
         hpke.Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA512__AES_128_GCM,
         hpke.Suite__DHKEM_P521_HKDF_SHA512__HKDF_SHA512__AES_256_GCM,
+        hpke.Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA256__ExportOnly,
+        hpke.Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA512__ExportOnly,
     ]
     for suite in all:
         if suite.KEM.ID == kem_id and suite.KDF.ID == kdf_id and suite.AEAD.ID == aead_id:
@@ -50,14 +52,34 @@ def test_receive_known_answer(known_answers):
             bytes.fromhex(kat['skRm']),
             bytes.fromhex(kat['pkRm']))
 
-        # TODO: support multiple encryptions
-        enc = kat['encryptions'][0]
-        message = suite.open(
-            bytes.fromhex(kat['pkEm']),
-            private_key,
-            info=bytes.fromhex(kat['info']),
-            aad=bytes.fromhex(enc['aad']),
-            ciphertext=bytes.fromhex(enc['ct']))
-        assert message == bytes.fromhex(enc['pt'])
+        context = suite.setup_recv(
+            encap=bytes.fromhex(kat['pkEm']),
+            our_privatekey=private_key,
+            info=bytes.fromhex(kat['info']))
+
+        for i, enc in enumerate(kat['encryptions']):
+            if i == 0:
+                # test one-shot API
+                message = suite.open(
+                    bytes.fromhex(kat['pkEm']),
+                    private_key,
+                    info=bytes.fromhex(kat['info']),
+                    aad=bytes.fromhex(enc['aad']),
+                    ciphertext=bytes.fromhex(enc['ct']))
+                assert message == bytes.fromhex(enc['pt'])
+                print('  ', 'single-shot OK')
+
+            message = context.aead.open(
+                    aad=bytes.fromhex(enc['aad']),
+                    ciphertext=bytes.fromhex(enc['ct']))
+            assert message == bytes.fromhex(enc['pt'])
+            print('  ', 'ciphertext', i, 'OK')
+
+        for i, ex in enumerate(kat['exports']):
+            got = context.export(
+                    exporter_context=bytes.fromhex(ex['exporter_context']),
+                    length=ex['L'])
+            assert got == bytes.fromhex(ex['exported_value'])
+            print('  ', 'exporter value', i, 'OK')
 
         print('tested', suite, 'OK')
