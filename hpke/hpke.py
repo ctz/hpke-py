@@ -1,9 +1,9 @@
 """
 Implementation of draft-irtf-cfrg-hpke using cryptography.io.
 
-Supported parameters:
-    mode_base only
-    Single-shot API only
+Author: Joseph Birr-Pixton
+License: Apache License 2.0
+https://github.com/ctz/hpke-py
 """
 
 import struct
