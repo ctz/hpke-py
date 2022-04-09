@@ -1,5 +1,5 @@
 """
-Implementation of draft-irtf-cfrg-hpke using cryptography.io.
+Implementation of RFC9180 using cryptography.io.
 
 Author: Joseph Birr-Pixton
 License: Apache License 2.0
@@ -7,6 +7,7 @@ https://github.com/ctz/hpke-py
 """
 
 import struct
+import enum
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -18,6 +19,13 @@ from cryptography.hazmat.primitives.serialization import PublicFormat, Encoding
 
 def xor_bytes(b1, b2):
     return bytes([a1 ^ a2 for (a1, a2) in zip(b1, b2)])
+
+
+class Mode(enum.Enum):
+    BASE = 0
+    PSK = 1
+    AUTH = 2
+    AUTH_PSK = 3
 
 
 class _HKDF:

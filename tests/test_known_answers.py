@@ -44,7 +44,7 @@ def test_aeads(known_answers):
 def test_receive_known_answer(known_answers):
     for kat in known_answers:
         suite = find_suite(kat['kem_id'], kat['kdf_id'], kat['aead_id'])
-        if kat['mode'] != 0 or suite is None:
+        if hpke.Mode(kat['mode']) not in (hpke.Mode.BASE,) or suite is None:
             continue
 
         print('testing', suite)
