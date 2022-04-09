@@ -1,5 +1,7 @@
 # hpke.py
 
+![CI status](https://github.com/ctz/hpke-py/actions/workflows/ci.yaml/badge.svg)
+
 This is an implementation of [RFC9180](https://datatracker.ietf.org/doc/rfc9180/) in python3, using
 [cryptography.io](https://cryptography.io) for the underlying cryptography.
 
