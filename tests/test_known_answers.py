@@ -41,10 +41,11 @@ def test_aeads(known_answers):
 
         print('tested', suite.AEAD, 'OK')
 
-def test_receive_known_answer(known_answers):
+def test_receive_base_known_answer(known_answers):
     for kat in known_answers:
         suite = find_suite(kat['kem_id'], kat['kdf_id'], kat['aead_id'])
-        if hpke.Mode(kat['mode']) not in (hpke.Mode.BASE,) or suite is None:
+        mode = hpke.Mode(kat['mode'])
+        if mode not in (hpke.Mode.BASE,) or suite is None:
             continue
 
         print('testing', suite)
@@ -63,6 +64,54 @@ def test_receive_known_answer(known_answers):
                 message = suite.open(
                     bytes.fromhex(kat['pkEm']),
                     private_key,
+                    info=bytes.fromhex(kat['info']),
+                    aad=bytes.fromhex(enc['aad']),
+                    ciphertext=bytes.fromhex(enc['ct']))
+                assert message == bytes.fromhex(enc['pt'])
+                print('  ', 'single-shot OK')
+
+            message = context.aead.open(
+                    aad=bytes.fromhex(enc['aad']),
+                    ciphertext=bytes.fromhex(enc['ct']))
+            assert message == bytes.fromhex(enc['pt'])
+            print('  ', 'ciphertext', i, 'OK')
+
+        for i, ex in enumerate(kat['exports']):
+            got = context.export(
+                    exporter_context=bytes.fromhex(ex['exporter_context']),
+                    length=ex['L'])
+            assert got == bytes.fromhex(ex['exported_value'])
+            print('  ', 'exporter value', i, 'OK')
+
+        print('tested', suite, 'OK')
+
+def test_receive_auth_known_answer(known_answers):
+    for kat in known_answers:
+        suite = find_suite(kat['kem_id'], kat['kdf_id'], kat['aead_id'])
+        mode = hpke.Mode(kat['mode'])
+        if mode not in (hpke.Mode.AUTH,) or suite is None:
+            continue
+
+        print('testing', suite)
+        private_key = suite.KEM.decode_private_key(
+            bytes.fromhex(kat['skRm']),
+            bytes.fromhex(kat['pkRm']))
+        sender_pubkey = suite.KEM.decode_public_key(
+                bytes.fromhex(kat['pkSm']))
+
+        context = suite.setup_auth_recv(
+            encap=bytes.fromhex(kat['pkEm']),
+            our_privatekey=private_key,
+            info=bytes.fromhex(kat['info']),
+            peer_pubkey=sender_pubkey)
+
+        for i, enc in enumerate(kat['encryptions']):
+            if i == 0:
+                # test one-shot API
+                message = suite.open_auth(
+                    bytes.fromhex(kat['pkEm']),
+                    private_key,
+                    sender_pubkey,
                     info=bytes.fromhex(kat['info']),
                     aad=bytes.fromhex(enc['aad']),
                     ciphertext=bytes.fromhex(enc['ct']))

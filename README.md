@@ -10,7 +10,7 @@ This is an implementation of [RFC9180](https://datatracker.ietf.org/doc/rfc9180/
  - Modes
    - [x] mode_base
    - [ ] mode_psk
-   - [ ] mode_auth
+   - [x] mode_auth
    - [ ] mode_auth_psk
  - AEADs
    - [x] AES-128-GCM

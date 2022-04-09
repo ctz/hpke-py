@@ -91,6 +91,12 @@ class _DHKEMWeierstrass:
     NSECRET = None
 
     @classmethod
+    def _encode_public_key(cls, pubkey):
+        return pubkey.public_bytes(
+            encoding=Encoding.X962, format=PublicFormat.UncompressedPoint
+        )
+
+    @classmethod
     def _extract_and_expand(cls, dh, kem_context, N):
         suite_id = b"KEM" + struct.pack(">H", cls.ID)
         eae_prk = cls.KDF.labeled_extract(b"", b"eae_prk", dh, suite_id=suite_id)
@@ -104,17 +110,10 @@ class _DHKEMWeierstrass:
         our_priv = ec.generate_private_key(cls.CURVE, backend=default_backend())
         shared_key = our_priv.exchange(ec.ECDH(), peer_pubkey)
 
-        enc = our_priv.public_key().public_bytes(
-            encoding=Encoding.X962, format=PublicFormat.UncompressedPoint
-        )
+        enc = cls._encode_public_key(our_priv.public_key())
 
-        kem_context = enc
-        kem_context += peer_pubkey.public_bytes(
-            encoding=Encoding.X962, format=PublicFormat.UncompressedPoint
-        )
-
+        kem_context = enc + cls._encode_public_key(peer_pubkey)
         shared_secret = cls._extract_and_expand(shared_key, kem_context, cls.NSECRET)
-
         return shared_secret, enc
 
     @classmethod
@@ -122,9 +121,38 @@ class _DHKEMWeierstrass:
         peer_pubkey = ec.EllipticCurvePublicKey.from_encoded_point(cls.CURVE, enc)
 
         shared_key = our_privatekey.exchange(ec.ECDH(), peer_pubkey)
-        kem_context = enc
-        kem_context += our_privatekey.public_key().public_bytes(
-            encoding=Encoding.X962, format=PublicFormat.UncompressedPoint
+        kem_context = enc + cls._encode_public_key(our_privatekey.public_key())
+        shared_secret = cls._extract_and_expand(shared_key, kem_context, cls.NSECRET)
+        return shared_secret
+
+    @classmethod
+    def auth_encap(cls, peer_pubkey, our_privatekey):
+        our_ephem = ec.generate_private_key(cls.CURVE, backend=default_backend())
+        shared_key = our_ephem.exchange(
+            ec.ECDH(), peer_pubkey
+        ) + our_privatekey.exchange(ec.ECDH(), peer_pubkey)
+
+        enc = cls._encode_public_key(our_ephem.public_key())
+
+        kem_context = (
+            enc
+            + cls._encode_public_key(peer_pubkey)
+            + cls._encode_public_key(our_privatekey.public_key())
+        )
+        shared_secret = cls._extract_and_expand(shared_key, kem_context, cls.NSECRET)
+        return shared_secret, enc
+
+    @classmethod
+    def auth_decap(cls, enc, our_privatekey, peer_pubkey_static):
+        peer_pubkey_ephem = ec.EllipticCurvePublicKey.from_encoded_point(cls.CURVE, enc)
+        shared_key = our_privatekey.exchange(
+            ec.ECDH(), peer_pubkey_ephem
+        ) + our_privatekey.exchange(ec.ECDH(), peer_pubkey_static)
+
+        kem_context = (
+            enc
+            + cls._encode_public_key(our_privatekey.public_key())
+            + cls._encode_public_key(peer_pubkey_static)
         )
 
         shared_secret = cls._extract_and_expand(shared_key, kem_context, cls.NSECRET)
@@ -137,6 +165,14 @@ class _DHKEMWeierstrass:
             int.from_bytes(scalar, "big"), public_key.public_numbers()
         ).private_key(backend=default_backend())
         return private_key
+
+    @classmethod
+    def decode_public_key(cls, public_key):
+        """
+        Decodes a public key (encoded in bytes, X9.62 uncompressed format) and
+        returns an ec.EllipticCurvePublicKey.
+        """
+        return ec.EllipticCurvePublicKey.from_encoded_point(cls.CURVE, public_key)
 
     @classmethod
     def generate_private_key(cls):
@@ -229,12 +265,12 @@ class _Suite:
     AEAD = None
 
     @classmethod
-    def _key_schedule(cls, shared_secret, info):
+    def _key_schedule(cls, mode, shared_secret, info):
         suite_id = b"HPKE" + struct.pack(">HHH", cls.KEM.ID, cls.KDF.ID, cls.AEAD.ID)
 
         psk_id_hash = cls.KDF.labeled_extract(b"", b"psk_id_hash", b"", suite_id)
         info_hash = cls.KDF.labeled_extract(b"", b"info_hash", info, suite_id)
-        key_schedule_context = b"\x00" + psk_id_hash + info_hash
+        key_schedule_context = bytes([mode.value]) + psk_id_hash + info_hash
 
         secret = cls.KDF.labeled_extract(shared_secret, b"secret", b"", suite_id)
 
@@ -259,25 +295,88 @@ class _Suite:
     @classmethod
     def _setup_base_send(cls, peer_pubkey, info):
         shared_secret, encap = cls.KEM.encap(peer_pubkey)
-        return encap, cls._key_schedule(shared_secret, info)
+        return encap, cls._key_schedule(Mode.BASE, shared_secret, info)
 
     @classmethod
     def _setup_base_recv(cls, encap, our_privatekey, info):
         shared_secret = cls.KEM.decap(encap, our_privatekey)
-        return cls._key_schedule(shared_secret, info)
+        return cls._key_schedule(Mode.BASE, shared_secret, info)
+
+    @classmethod
+    def _setup_auth_send(cls, peer_pubkey, info, our_privatekey):
+        shared_secret, encap = cls.KEM.auth_encap(peer_pubkey, our_privatekey)
+        return encap, cls._key_schedule(Mode.AUTH, shared_secret, info)
+
+    @classmethod
+    def _setup_auth_recv(cls, encap, our_privatekey, info, peer_pubkey):
+        shared_secret = cls.KEM.auth_decap(encap, our_privatekey, peer_pubkey)
+        return cls._key_schedule(Mode.AUTH, shared_secret, info)
 
     @classmethod
     def setup_send(cls, peer_pubkey, info):
+        """
+        Streaming encryption API in Base mode.
+
+        `peer_pubkey` is the peer's public key, of type
+          `ec.EllipticCurvePublicKey'.
+        `info` is any identity information for the receiver, of type `bytes`.
+
+        Returns `(encap, context)`, where `encap` is of type `bytes`,
+        and `context` is of type `Context`.
+        """
         return cls._setup_base_send(peer_pubkey, info)
 
     @classmethod
     def setup_recv(cls, encap, our_privatekey, info):
+        """
+        Streaming decryption API in Base mode.
+
+        `encap` is the encapsulated key from the sender, of type `bytes`.
+        `our_privatekey` is the receiver's private key, of type
+          `ec.EllipticCurvePrivateKey`.
+        `info` is any identity information for the receiver, of type `bytes`.
+
+        Returns `context`, of type `Context`.
+        """
         return cls._setup_base_recv(encap, our_privatekey, info)
 
     @classmethod
+    def setup_auth_send(cls, peer_pubkey, info, our_privatekey):
+        """
+        Streaming encryption API in Auth mode.
+
+        `peer_pubkey` is the peer's public key, of type
+          `ec.EllipticCurvePublicKey'.
+        `info` is any identity information for the receiver, of type `bytes`.
+        `our_privatekey` is sender's private key, of type
+          `ec.EllipticCurvePrivateKey`.
+
+        Returns `(encap, context)`, where `encap` is of type `bytes`,
+        and `context` is of type `Context`.
+        """
+        return cls._setup_auth_send(peer_pubkey, info, our_privatekey)
+
+    @classmethod
+    def setup_auth_recv(cls, encap, our_privatekey, info, peer_pubkey):
+        """
+        Streaming decryption API in Auth mode.
+
+        `encap` is the encapsulated key from the sender, of type `bytes`.
+        `our_privatekey` is the receiver's private key, of type
+          `ec.EllipticCurvePrivateKey`.
+        `info` is any identity information for the receiver, of type `bytes`.
+        `peer_pubkey` is the sender's public key, of type
+          `ec.EllipticCurvePublicKey`.
+
+        Returns `context`, of type `Context`.
+        """
+        return cls._setup_auth_recv(encap, our_privatekey, info, peer_pubkey)
+
+    # -- Base mode --
+    @classmethod
     def seal(cls, peer_pubkey, info, aad, message):
         """
-        Single-shot encryption API.
+        Single-shot encryption API in Base mode.
 
         `peer_pubkey` is the peer's public key, of type
           `ec.EllipticCurvePublicKey'.
@@ -296,7 +395,7 @@ class _Suite:
     @classmethod
     def open(cls, encap, our_privatekey, info, aad, ciphertext):
         """
-        Single-shot decryption API.
+        Single-shot decryption API in Base mode.
 
         `encap` is the encapsulated key from the sender.
         `our_privatekey` is the receiver's private key, of type
@@ -314,6 +413,53 @@ class _Suite:
         arguments are corrupt.
         """
         ctx = cls._setup_base_recv(encap, our_privatekey, info)
+        return ctx.aead.open(aad, ciphertext)
+
+    # -- Auth mode --
+    @classmethod
+    def seal_auth(cls, peer_pubkey, our_privatekey, info, aad, message):
+        """
+        Single-shot encryption API in Auth mode.
+
+        `peer_pubkey` is the peer's public key, of type
+          `ec.EllipticCurvePublicKey'.
+        `our_privatekey` is our (the sender) private key, of type
+          `ec.EllipticCurvePrivateKey`.
+        `info` is any identity information for the receiver.
+        `aad` is any additional authenticated data for the AEAD.
+        `message` is the message plaintext.
+
+        `info`, `aad`, and `message` arguments are of type `bytes`.
+
+        Returns `(encap, ciphertext)`, both of type `bytes`.
+        """
+        encap, ctx = cls._setup_auth_send(peer_pubkey, info, our_privatekey)
+        ciphertext = ctx.aead.seal(aad, message)
+        return encap, ciphertext
+
+    @classmethod
+    def open_auth(cls, encap, our_privatekey, peer_pubkey, info, aad, ciphertext):
+        """
+        Single-shot decryption API in Auth mode.
+
+        `encap` is the encapsulated key from the sender.
+        `our_privatekey` is the receiver's private key, of type
+          `ec.EllipticCurvePrivateKey`.
+        `peer_pubkey` is the sender's public key, of type
+          `ec.EllipticCurvePublicKey`.
+        `info` is any identity information for the receiver.
+        `aad` is any additional authenticated data for the AEAD.
+        `ciphertext` is the message ciphertext.
+
+        `encap`, `info`, `aad`, and `ciphertext` arguments are of
+        type `bytes`.
+
+        Returns `plaintext` of type `bytes`.
+
+        Raises `cryptography.exceptions.InvalidTag` if any of the
+        arguments are corrupt.
+        """
+        ctx = cls._setup_auth_recv(encap, our_privatekey, info, peer_pubkey)
         return ctx.aead.open(aad, ciphertext)
 
 
