@@ -40,22 +40,20 @@ class _HKDF:
 
     @classmethod
     def _hkdf_expand(cls, prk, info, length):
-        t_n_minus_1= b''
+        t_n_minus_1 = b""
         n = 1
-        data = b''
+        data = b""
 
         assert length <= 255 * cls.HASH.digest_size
 
         while len(data) < length:
             hctx = hmac.HMAC(prk, cls.HASH, backend=default_backend())
-            hctx.update(t_n_minus_1 + info + n.to_bytes(1, byteorder='big'))
+            hctx.update(t_n_minus_1 + info + n.to_bytes(1, byteorder="big"))
             t_n_minus_1 = hctx.finalize()
             data += t_n_minus_1
             n += 1
 
         return data[:length]
-
-
 
     @classmethod
     def labeled_extract(cls, salt, label, ikm, suite_id):
@@ -65,9 +63,9 @@ class _HKDF:
     @classmethod
     def labeled_expand(cls, prk, label, info, length, suite_id):
         if length == 0:
-            return b''
+            return b""
 
-        labeled_info = struct.pack('>H', length) + b"HPKE-v1" + suite_id + label + info
+        labeled_info = struct.pack(">H", length) + b"HPKE-v1" + suite_id + label + info
         return cls._hkdf_expand(prk, labeled_info, length)
 
 
@@ -94,10 +92,11 @@ class _DHKEMWeierstrass:
 
     @classmethod
     def _extract_and_expand(cls, dh, kem_context, N):
-        suite_id = b'KEM' + struct.pack('>H', cls.ID)
-        eae_prk = cls.KDF.labeled_extract(b'', b'eae_prk', dh, suite_id=suite_id)
-        shared_secret = cls.KDF.labeled_expand(eae_prk, b'shared_secret',
-                kem_context, N, suite_id=suite_id)
+        suite_id = b"KEM" + struct.pack(">H", cls.ID)
+        eae_prk = cls.KDF.labeled_extract(b"", b"eae_prk", dh, suite_id=suite_id)
+        shared_secret = cls.KDF.labeled_expand(
+            eae_prk, b"shared_secret", kem_context, N, suite_id=suite_id
+        )
         return shared_secret
 
     @classmethod
@@ -106,13 +105,13 @@ class _DHKEMWeierstrass:
         shared_key = our_priv.exchange(ec.ECDH(), peer_pubkey)
 
         enc = our_priv.public_key().public_bytes(
-            encoding=Encoding.X962,
-            format=PublicFormat.UncompressedPoint)
+            encoding=Encoding.X962, format=PublicFormat.UncompressedPoint
+        )
 
         kem_context = enc
         kem_context += peer_pubkey.public_bytes(
-            encoding=Encoding.X962,
-            format=PublicFormat.UncompressedPoint)
+            encoding=Encoding.X962, format=PublicFormat.UncompressedPoint
+        )
 
         shared_secret = cls._extract_and_expand(shared_key, kem_context, cls.NSECRET)
 
@@ -120,16 +119,13 @@ class _DHKEMWeierstrass:
 
     @classmethod
     def decap(cls, enc, our_privatekey):
-        peer_pubkey = ec.EllipticCurvePublicKey.from_encoded_point(
-            cls.CURVE,
-            enc
-        )
+        peer_pubkey = ec.EllipticCurvePublicKey.from_encoded_point(cls.CURVE, enc)
 
         shared_key = our_privatekey.exchange(ec.ECDH(), peer_pubkey)
         kem_context = enc
         kem_context += our_privatekey.public_key().public_bytes(
-            encoding=Encoding.X962,
-            format=PublicFormat.UncompressedPoint)
+            encoding=Encoding.X962, format=PublicFormat.UncompressedPoint
+        )
 
         shared_secret = cls._extract_and_expand(shared_key, kem_context, cls.NSECRET)
         return shared_secret
@@ -138,8 +134,7 @@ class _DHKEMWeierstrass:
     def decode_private_key(cls, scalar, public_key):
         public_key = ec.EllipticCurvePublicKey.from_encoded_point(cls.CURVE, public_key)
         private_key = ec.EllipticCurvePrivateNumbers(
-            int.from_bytes(scalar, 'big'),
-            public_key.public_numbers()
+            int.from_bytes(scalar, "big"), public_key.public_numbers()
         ).private_key(backend=default_backend())
         return private_key
 
@@ -174,14 +169,14 @@ class _AES_GCM:
         assert len(self.nonce) == self.NN
 
     def seal(self, aad, message):
-        nonce = xor_bytes(self.nonce, self.seq.to_bytes(self.NN, byteorder='big'))
+        nonce = xor_bytes(self.nonce, self.seq.to_bytes(self.NN, byteorder="big"))
         self.seq += 1
 
         ctx = aead.AESGCM(self.key)
         return ctx.encrypt(nonce, message, aad)
 
     def open(self, aad, ciphertext):
-        nonce = xor_bytes(self.nonce, self.seq.to_bytes(self.NN, byteorder='big'))
+        nonce = xor_bytes(self.nonce, self.seq.to_bytes(self.NN, byteorder="big"))
         self.seq += 1
 
         ctx = aead.AESGCM(self.key)
@@ -207,9 +202,10 @@ class ExportOnlyAEAD:
     This has the same interface as (eg) AES_128_GCM but refuses
     to seal() or open().
     """
+
     NK = 0
     NN = 0
-    ID = 0xffff
+    ID = 0xFFFF
 
     def __init__(self, _key, _nonce):
         pass
@@ -234,27 +230,31 @@ class _Suite:
 
     @classmethod
     def _key_schedule(cls, shared_secret, info):
-        suite_id = b'HPKE' + struct.pack('>HHH', cls.KEM.ID, cls.KDF.ID, cls.AEAD.ID)
+        suite_id = b"HPKE" + struct.pack(">HHH", cls.KEM.ID, cls.KDF.ID, cls.AEAD.ID)
 
-        psk_id_hash = cls.KDF.labeled_extract(b'', b'psk_id_hash', b'', suite_id)
-        info_hash = cls.KDF.labeled_extract(b'', b'info_hash', info, suite_id)
-        key_schedule_context = b'\x00' + psk_id_hash + info_hash
+        psk_id_hash = cls.KDF.labeled_extract(b"", b"psk_id_hash", b"", suite_id)
+        info_hash = cls.KDF.labeled_extract(b"", b"info_hash", info, suite_id)
+        key_schedule_context = b"\x00" + psk_id_hash + info_hash
 
-        secret = cls.KDF.labeled_extract(shared_secret, b'secret', b'', suite_id)
+        secret = cls.KDF.labeled_extract(shared_secret, b"secret", b"", suite_id)
 
-        key = cls.KDF.labeled_expand(secret, b'key', key_schedule_context, cls.AEAD.NK, suite_id)
-        base_nonce = cls.KDF.labeled_expand(secret, b'base_nonce', key_schedule_context,
-                cls.AEAD.NN, suite_id)
+        key = cls.KDF.labeled_expand(
+            secret, b"key", key_schedule_context, cls.AEAD.NK, suite_id
+        )
+        base_nonce = cls.KDF.labeled_expand(
+            secret, b"base_nonce", key_schedule_context, cls.AEAD.NN, suite_id
+        )
 
-        exporter_secret = cls.KDF.labeled_expand(secret, b'exp', key_schedule_context,
-                cls.KDF.HASH.digest_size, suite_id)
+        exporter_secret = cls.KDF.labeled_expand(
+            secret, b"exp", key_schedule_context, cls.KDF.HASH.digest_size, suite_id
+        )
 
         def exporter(exporter_context, length):
-            return cls.KDF.labeled_expand(exporter_secret, b'sec',
-                    exporter_context, length, suite_id)
+            return cls.KDF.labeled_expand(
+                exporter_secret, b"sec", exporter_context, length, suite_id
+            )
 
-        return Context(aead=cls.AEAD(key, base_nonce),
-                export=exporter)
+        return Context(aead=cls.AEAD(key, base_nonce), export=exporter)
 
     @classmethod
     def _setup_base_send(cls, peer_pubkey, info):
@@ -321,6 +321,7 @@ class Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA256__AES_128_GCM(_Suite):
     """
     This is DHKEM(P-256, HKDF-SHA256), HKDF-SHA256, AES-128-GCM
     """
+
     KEM = DHKEM_P256_HKDF_SHA256
     KDF = HKDF_SHA256
     AEAD = AES_128_GCM
@@ -330,6 +331,7 @@ class Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA512__AES_128_GCM(_Suite):
     """
     This is DHKEM(P-256, HKDF-SHA256), HKDF-SHA512, AES-128-GCM
     """
+
     KEM = DHKEM_P256_HKDF_SHA256
     KDF = HKDF_SHA512
     AEAD = AES_128_GCM
@@ -339,14 +341,17 @@ class Suite__DHKEM_P521_HKDF_SHA512__HKDF_SHA512__AES_256_GCM(_Suite):
     """
     This is DHKEM(P-521, HKDF-SHA512), HKDF-SHA512, AES-256-GCM
     """
+
     KEM = DHKEM_P521_HKDF_SHA512
     KDF = HKDF_SHA512
     AEAD = AES_256_GCM
+
 
 class Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA256__ExportOnly(_Suite):
     """
     This is DHKEM(P-256, HKDF-SHA256), HKDF-SHA256, ExportOnly
     """
+
     KEM = DHKEM_P256_HKDF_SHA256
     KDF = HKDF_SHA256
     AEAD = ExportOnlyAEAD
@@ -356,6 +361,7 @@ class Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA512__ExportOnly(_Suite):
     """
     This is DHKEM(P-256, HKDF-SHA256), HKDF-SHA512, ExportOnly
     """
+
     KEM = DHKEM_P256_HKDF_SHA256
     KDF = HKDF_SHA512
     AEAD = ExportOnlyAEAD

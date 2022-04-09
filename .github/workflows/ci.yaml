@@ -26,6 +26,8 @@ jobs:
           poetry config virtualenvs.in-project true
       - name: Install dependencies
         run: poetry install --no-interaction
+      - name: Check formatting
+        run: poetry run black --check hpke
       - name: Run pytest
         run: poetry run pytest --cov hpke tests
       - name: Upload coverage artifact
