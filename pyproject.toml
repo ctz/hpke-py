@@ -3,7 +3,7 @@ name = "hpke"
 version = "0.1.0"
 description = "HPKE implementation"
 authors = ["Joseph Birr-Pixton <jpixton@gmail.com>"]
-license = "MIT"
+license = "Apache-2.0"
 
 [tool.poetry.dependencies]
 python = "^3.8"
