@@ -6,35 +6,29 @@ from cryptography.hazmat.backends import default_backend
 
 import hpke
 
-
-@pytest.fixture
-def known_answers():
-    return json.load(open("tests/known_answers.json"))
+known_answers = tuple(json.load(open("tests/known_answers.json")))
 
 
-def find_suite(kem_id, kdf_id, aead_id):
-    all = [
+def is_for_suite(suite, mode, kat):
+    return (
+        mode.value == kat["mode"]
+        and suite.KEM.ID == kat["kem_id"]
+        and suite.KDF.ID == kat["kdf_id"]
+        and suite.AEAD.ID == kat["aead_id"]
+    )
+
+
+@pytest.mark.parametrize(
+    "suite",
+    (
         hpke.Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA256__AES_128_GCM,
-        hpke.Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA512__AES_128_GCM,
         hpke.Suite__DHKEM_P521_HKDF_SHA512__HKDF_SHA512__AES_256_GCM,
         hpke.Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA256__ChaCha20Poly1305,
-        hpke.Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA256__ExportOnly,
-        hpke.Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA512__ExportOnly,
-    ]
-    for suite in all:
-        if (
-            suite.KEM.ID == kem_id
-            and suite.KDF.ID == kdf_id
-            and suite.AEAD.ID == aead_id
-        ):
-            return suite
-    return None
-
-
-def test_aeads(known_answers):
+    ),
+)
+def test_aead(suite):
     for kat in known_answers:
-        suite = find_suite(kat["kem_id"], kat["kdf_id"], kat["aead_id"])
-        if suite is None:
+        if not is_for_suite(suite, hpke.Mode.BASE, kat):
             continue
 
         for enc in kat["encryptions"]:
@@ -46,14 +40,27 @@ def test_aeads(known_answers):
         print("tested", suite.AEAD, "OK")
 
 
-def test_receive_base_known_answer(known_answers):
+@pytest.mark.parametrize(
+    "suite",
+    (
+        hpke.Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA256__AES_128_GCM,
+        hpke.Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA512__AES_128_GCM,
+        hpke.Suite__DHKEM_P521_HKDF_SHA512__HKDF_SHA512__AES_256_GCM,
+        hpke.Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA256__ChaCha20Poly1305,
+        hpke.Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA256__ExportOnly,
+        hpke.Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA512__ExportOnly,
+    ),
+)
+def test_receive_base_known_answer(suite):
+    count = 0
+
     for kat in known_answers:
-        suite = find_suite(kat["kem_id"], kat["kdf_id"], kat["aead_id"])
         mode = hpke.Mode(kat["mode"])
-        if mode not in (hpke.Mode.BASE,) or suite is None:
+        if not is_for_suite(suite, hpke.Mode.BASE, kat):
             continue
 
         print("testing", suite)
+        count += 1
         private_key = suite.KEM.decode_private_key(
             bytes.fromhex(kat["skRm"]), bytes.fromhex(kat["pkRm"])
         )
@@ -92,15 +99,29 @@ def test_receive_base_known_answer(known_answers):
 
         print("tested", suite, "OK")
 
+    assert count > 0, "this suite is untested"
 
-def test_receive_auth_known_answer(known_answers):
+
+@pytest.mark.parametrize(
+    "suite",
+    (
+        hpke.Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA256__AES_128_GCM,
+        hpke.Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA512__AES_128_GCM,
+        hpke.Suite__DHKEM_P521_HKDF_SHA512__HKDF_SHA512__AES_256_GCM,
+        hpke.Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA256__ChaCha20Poly1305,
+        hpke.Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA256__ExportOnly,
+        hpke.Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA512__ExportOnly,
+    ),
+)
+def test_receive_auth_known_answer(suite):
+    count = 0
+
     for kat in known_answers:
-        suite = find_suite(kat["kem_id"], kat["kdf_id"], kat["aead_id"])
-        mode = hpke.Mode(kat["mode"])
-        if mode not in (hpke.Mode.AUTH,) or suite is None:
+        if not is_for_suite(suite, hpke.Mode.AUTH, kat):
             continue
 
         print("testing", suite)
+        count += 1
         private_key = suite.KEM.decode_private_key(
             bytes.fromhex(kat["skRm"]), bytes.fromhex(kat["pkRm"])
         )
@@ -141,3 +162,4 @@ def test_receive_auth_known_answer(known_answers):
             print("  ", "exporter value", i, "OK")
 
         print("tested", suite, "OK")
+    assert count > 0, "this suite is untested"
