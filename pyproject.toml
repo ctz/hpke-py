@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "HPKE implementation"
 authors = ["Joseph Birr-Pixton <jpixton@gmail.com>"]
 license = "Apache-2.0"
+repository = "https://github.com/ctz/hpke-py"
 
 [tool.poetry.dependencies]
 python = "^3.8"
