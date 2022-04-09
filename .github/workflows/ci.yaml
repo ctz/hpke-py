@@ -21,7 +21,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install workflow dependencies
         run: |
-          pip install -r .github/workflows/requirements.txt
+          python3 -m pip install -r .github/workflows/requirements.txt
           poetry config virtualenvs.create true
           poetry config virtualenvs.in-project true
       - name: Install dependencies
