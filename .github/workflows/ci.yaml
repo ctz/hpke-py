@@ -28,6 +28,8 @@ jobs:
         run: poetry install --no-interaction
       - name: Check formatting
         run: poetry run black --check hpke tests
+      - name: Check types
+        run: poetry run mypy hpke
       - name: Run pytest
         run: poetry run pytest --cov hpke tests
       - name: Upload coverage artifact

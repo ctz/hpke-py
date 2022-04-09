@@ -8,6 +8,7 @@ https://github.com/ctz/hpke-py
 
 import struct
 import enum
+from typing import Any, Tuple, Callable
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -17,7 +18,7 @@ from cryptography.hazmat.primitives import hmac
 from cryptography.hazmat.primitives.serialization import PublicFormat, Encoding
 
 
-def xor_bytes(b1, b2):
+def xor_bytes(b1: bytes, b2: bytes) -> bytes:
     return bytes([a1 ^ a2 for (a1, a2) in zip(b1, b2)])
 
 
@@ -29,17 +30,17 @@ class Mode(enum.Enum):
 
 
 class _HKDF:
-    ID = None
-    HASH = None
+    ID: int = 0
+    HASH: Any = None
 
     @classmethod
-    def _hkdf_extract(cls, salt, ikm):
+    def _hkdf_extract(cls, salt: bytes, ikm: bytes) -> bytes:
         hctx = hmac.HMAC(salt, cls.HASH, backend=default_backend())
         hctx.update(ikm)
         return hctx.finalize()
 
     @classmethod
-    def _hkdf_expand(cls, prk, info, length):
+    def _hkdf_expand(cls, prk: bytes, info: bytes, length: int) -> bytes:
         t_n_minus_1 = b""
         n = 1
         data = b""
@@ -56,12 +57,16 @@ class _HKDF:
         return data[:length]
 
     @classmethod
-    def labeled_extract(cls, salt, label, ikm, suite_id):
+    def labeled_extract(
+        cls, salt: bytes, label: bytes, ikm: bytes, suite_id: bytes
+    ) -> bytes:
         labeled_ikm = b"HPKE-v1" + suite_id + label + ikm
         return cls._hkdf_extract(salt, labeled_ikm)
 
     @classmethod
-    def labeled_expand(cls, prk, label, info, length, suite_id):
+    def labeled_expand(
+        cls, prk: bytes, label: bytes, info: bytes, length: int, suite_id: bytes
+    ) -> bytes:
         if length == 0:
             return b""
 
@@ -85,19 +90,19 @@ class HKDF_SHA512(_HKDF):
 
 
 class _DHKEMWeierstrass:
-    ID = None
-    KDF = None
-    CURVE = None
-    NSECRET = None
+    ID: int = 0
+    KDF: Any = None
+    CURVE: Any = None
+    NSECRET: int = 0
 
     @classmethod
-    def _encode_public_key(cls, pubkey):
+    def _encode_public_key(cls, pubkey: ec.EllipticCurvePublicKey) -> bytes:
         return pubkey.public_bytes(
             encoding=Encoding.X962, format=PublicFormat.UncompressedPoint
         )
 
     @classmethod
-    def _extract_and_expand(cls, dh, kem_context, N):
+    def _extract_and_expand(cls, dh: bytes, kem_context: bytes, N: int) -> bytes:
         suite_id = b"KEM" + struct.pack(">H", cls.ID)
         eae_prk = cls.KDF.labeled_extract(b"", b"eae_prk", dh, suite_id=suite_id)
         shared_secret = cls.KDF.labeled_expand(
@@ -106,7 +111,7 @@ class _DHKEMWeierstrass:
         return shared_secret
 
     @classmethod
-    def encap(cls, peer_pubkey):
+    def encap(cls, peer_pubkey: ec.EllipticCurvePublicKey) -> Tuple[bytes, bytes]:
         our_priv = ec.generate_private_key(cls.CURVE, backend=default_backend())
         shared_key = our_priv.exchange(ec.ECDH(), peer_pubkey)
 
@@ -117,7 +122,7 @@ class _DHKEMWeierstrass:
         return shared_secret, enc
 
     @classmethod
-    def decap(cls, enc, our_privatekey):
+    def decap(cls, enc: bytes, our_privatekey: ec.EllipticCurvePrivateKey) -> bytes:
         peer_pubkey = ec.EllipticCurvePublicKey.from_encoded_point(cls.CURVE, enc)
 
         shared_key = our_privatekey.exchange(ec.ECDH(), peer_pubkey)
@@ -126,7 +131,11 @@ class _DHKEMWeierstrass:
         return shared_secret
 
     @classmethod
-    def auth_encap(cls, peer_pubkey, our_privatekey):
+    def auth_encap(
+        cls,
+        peer_pubkey: ec.EllipticCurvePublicKey,
+        our_privatekey: ec.EllipticCurvePrivateKey,
+    ) -> Tuple[bytes, bytes]:
         our_ephem = ec.generate_private_key(cls.CURVE, backend=default_backend())
         shared_key = our_ephem.exchange(
             ec.ECDH(), peer_pubkey
@@ -143,7 +152,12 @@ class _DHKEMWeierstrass:
         return shared_secret, enc
 
     @classmethod
-    def auth_decap(cls, enc, our_privatekey, peer_pubkey_static):
+    def auth_decap(
+        cls,
+        enc: bytes,
+        our_privatekey: ec.EllipticCurvePrivateKey,
+        peer_pubkey_static: ec.EllipticCurvePublicKey,
+    ) -> bytes:
         peer_pubkey_ephem = ec.EllipticCurvePublicKey.from_encoded_point(cls.CURVE, enc)
         shared_key = our_privatekey.exchange(
             ec.ECDH(), peer_pubkey_ephem
@@ -159,15 +173,19 @@ class _DHKEMWeierstrass:
         return shared_secret
 
     @classmethod
-    def decode_private_key(cls, scalar, public_key):
-        public_key = ec.EllipticCurvePublicKey.from_encoded_point(cls.CURVE, public_key)
+    def decode_private_key(
+        cls, scalar: bytes, public_key_bytes: bytes
+    ) -> ec.EllipticCurvePrivateKey:
+        public_key = ec.EllipticCurvePublicKey.from_encoded_point(
+            cls.CURVE, public_key_bytes
+        )
         private_key = ec.EllipticCurvePrivateNumbers(
             int.from_bytes(scalar, "big"), public_key.public_numbers()
         ).private_key(backend=default_backend())
         return private_key
 
     @classmethod
-    def decode_public_key(cls, public_key):
+    def decode_public_key(cls, public_key: bytes) -> ec.EllipticCurvePublicKey:
         """
         Decodes a public key (encoded in bytes, X9.62 uncompressed format) and
         returns an ec.EllipticCurvePublicKey.
@@ -175,7 +193,7 @@ class _DHKEMWeierstrass:
         return ec.EllipticCurvePublicKey.from_encoded_point(cls.CURVE, public_key)
 
     @classmethod
-    def generate_private_key(cls):
+    def generate_private_key(cls) -> ec.EllipticCurvePrivateKey:
         return ec.generate_private_key(cls.CURVE, backend=default_backend())
 
 
@@ -194,24 +212,24 @@ class DHKEM_P521_HKDF_SHA512(_DHKEMWeierstrass):
 
 
 class _AES_GCM:
-    NK = None
-    NN = None
+    NK: int = 0
+    NN: int = 0
 
-    def __init__(self, key, nonce):
+    def __init__(self, key: bytes, nonce: bytes):
         self.key = key
         self.nonce = nonce
         self.seq = 0
         assert len(self.key) == self.NK
         assert len(self.nonce) == self.NN
 
-    def seal(self, aad, message):
+    def seal(self, aad: bytes, message: bytes) -> bytes:
         nonce = xor_bytes(self.nonce, self.seq.to_bytes(self.NN, byteorder="big"))
         self.seq += 1
 
         ctx = aead.AESGCM(self.key)
         return ctx.encrypt(nonce, message, aad)
 
-    def open(self, aad, ciphertext):
+    def open(self, aad: bytes, ciphertext: bytes) -> bytes:
         nonce = xor_bytes(self.nonce, self.seq.to_bytes(self.NN, byteorder="big"))
         self.seq += 1
 
@@ -243,29 +261,29 @@ class ExportOnlyAEAD:
     NN = 0
     ID = 0xFFFF
 
-    def __init__(self, _key, _nonce):
+    def __init__(self, _key: bytes, _nonce: bytes):
         pass
 
-    def seal(self, aad, message):
+    def seal(self, aad: bytes, message: bytes) -> bytes:
         raise NotImplementedError()
 
-    def open(self, aad, ciphertext):
+    def open(self, aad: bytes, ciphertext: bytes) -> bytes:
         raise NotImplementedError()
 
 
 class Context:
-    def __init__(self, aead, export):
+    def __init__(self, aead: Any, export: Callable[[bytes, int], bytes]):
         self.aead = aead
         self.export = export
 
 
 class _Suite:
-    KEM = None
-    KDF = None
-    AEAD = None
+    KEM: Any = None
+    KDF: Any = None
+    AEAD: Any = None
 
     @classmethod
-    def _key_schedule(cls, mode, shared_secret, info):
+    def _key_schedule(cls, mode: Mode, shared_secret: bytes, info: bytes) -> Context:
         suite_id = b"HPKE" + struct.pack(">HHH", cls.KEM.ID, cls.KDF.ID, cls.AEAD.ID)
 
         psk_id_hash = cls.KDF.labeled_extract(b"", b"psk_id_hash", b"", suite_id)
@@ -285,7 +303,7 @@ class _Suite:
             secret, b"exp", key_schedule_context, cls.KDF.HASH.digest_size, suite_id
         )
 
-        def exporter(exporter_context, length):
+        def exporter(exporter_context: bytes, length: int) -> bytes:
             return cls.KDF.labeled_expand(
                 exporter_secret, b"sec", exporter_context, length, suite_id
             )
@@ -293,27 +311,44 @@ class _Suite:
         return Context(aead=cls.AEAD(key, base_nonce), export=exporter)
 
     @classmethod
-    def _setup_base_send(cls, peer_pubkey, info):
+    def _setup_base_send(
+        cls, peer_pubkey: ec.EllipticCurvePublicKey, info: bytes
+    ) -> Tuple[bytes, Context]:
         shared_secret, encap = cls.KEM.encap(peer_pubkey)
         return encap, cls._key_schedule(Mode.BASE, shared_secret, info)
 
     @classmethod
-    def _setup_base_recv(cls, encap, our_privatekey, info):
+    def _setup_base_recv(
+        cls, encap: bytes, our_privatekey: ec.EllipticCurvePrivateKey, info: bytes
+    ) -> Context:
         shared_secret = cls.KEM.decap(encap, our_privatekey)
         return cls._key_schedule(Mode.BASE, shared_secret, info)
 
     @classmethod
-    def _setup_auth_send(cls, peer_pubkey, info, our_privatekey):
+    def _setup_auth_send(
+        cls,
+        peer_pubkey: ec.EllipticCurvePublicKey,
+        info: bytes,
+        our_privatekey: ec.EllipticCurvePrivateKey,
+    ) -> Tuple[bytes, Context]:
         shared_secret, encap = cls.KEM.auth_encap(peer_pubkey, our_privatekey)
         return encap, cls._key_schedule(Mode.AUTH, shared_secret, info)
 
     @classmethod
-    def _setup_auth_recv(cls, encap, our_privatekey, info, peer_pubkey):
+    def _setup_auth_recv(
+        cls,
+        encap: bytes,
+        our_privatekey: ec.EllipticCurvePrivateKey,
+        info: bytes,
+        peer_pubkey: ec.EllipticCurvePublicKey,
+    ) -> Context:
         shared_secret = cls.KEM.auth_decap(encap, our_privatekey, peer_pubkey)
         return cls._key_schedule(Mode.AUTH, shared_secret, info)
 
     @classmethod
-    def setup_send(cls, peer_pubkey, info):
+    def setup_send(
+        cls, peer_pubkey: ec.EllipticCurvePublicKey, info: bytes
+    ) -> Tuple[bytes, Context]:
         """
         Streaming encryption API in Base mode.
 
@@ -327,7 +362,9 @@ class _Suite:
         return cls._setup_base_send(peer_pubkey, info)
 
     @classmethod
-    def setup_recv(cls, encap, our_privatekey, info):
+    def setup_recv(
+        cls, encap: bytes, our_privatekey: ec.EllipticCurvePrivateKey, info: bytes
+    ) -> Context:
         """
         Streaming decryption API in Base mode.
 
@@ -341,7 +378,12 @@ class _Suite:
         return cls._setup_base_recv(encap, our_privatekey, info)
 
     @classmethod
-    def setup_auth_send(cls, peer_pubkey, info, our_privatekey):
+    def setup_auth_send(
+        cls,
+        peer_pubkey: ec.EllipticCurvePublicKey,
+        info: bytes,
+        our_privatekey: ec.EllipticCurvePrivateKey,
+    ) -> Tuple[bytes, Context]:
         """
         Streaming encryption API in Auth mode.
 
@@ -357,7 +399,13 @@ class _Suite:
         return cls._setup_auth_send(peer_pubkey, info, our_privatekey)
 
     @classmethod
-    def setup_auth_recv(cls, encap, our_privatekey, info, peer_pubkey):
+    def setup_auth_recv(
+        cls,
+        encap: bytes,
+        our_privatekey: ec.EllipticCurvePrivateKey,
+        info: bytes,
+        peer_pubkey: ec.EllipticCurvePublicKey,
+    ) -> Context:
         """
         Streaming decryption API in Auth mode.
 
@@ -374,7 +422,13 @@ class _Suite:
 
     # -- Base mode --
     @classmethod
-    def seal(cls, peer_pubkey, info, aad, message):
+    def seal(
+        cls,
+        peer_pubkey: ec.EllipticCurvePublicKey,
+        info: bytes,
+        aad: bytes,
+        message: bytes,
+    ) -> Tuple[bytes, bytes]:
         """
         Single-shot encryption API in Base mode.
 
@@ -393,7 +447,14 @@ class _Suite:
         return encap, ciphertext
 
     @classmethod
-    def open(cls, encap, our_privatekey, info, aad, ciphertext):
+    def open(
+        cls,
+        encap: bytes,
+        our_privatekey: ec.EllipticCurvePrivateKey,
+        info: bytes,
+        aad: bytes,
+        ciphertext: bytes,
+    ) -> bytes:
         """
         Single-shot decryption API in Base mode.
 
@@ -417,7 +478,14 @@ class _Suite:
 
     # -- Auth mode --
     @classmethod
-    def seal_auth(cls, peer_pubkey, our_privatekey, info, aad, message):
+    def seal_auth(
+        cls,
+        peer_pubkey: ec.EllipticCurvePublicKey,
+        our_privatekey: ec.EllipticCurvePrivateKey,
+        info: bytes,
+        aad: bytes,
+        message: bytes,
+    ) -> Tuple[bytes, bytes]:
         """
         Single-shot encryption API in Auth mode.
 
@@ -438,7 +506,15 @@ class _Suite:
         return encap, ciphertext
 
     @classmethod
-    def open_auth(cls, encap, our_privatekey, peer_pubkey, info, aad, ciphertext):
+    def open_auth(
+        cls,
+        encap: bytes,
+        our_privatekey: ec.EllipticCurvePrivateKey,
+        peer_pubkey: ec.EllipticCurvePublicKey,
+        info: bytes,
+        aad: bytes,
+        ciphertext: bytes,
+    ) -> bytes:
         """
         Single-shot decryption API in Auth mode.
 
