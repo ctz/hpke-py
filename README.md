@@ -15,7 +15,7 @@ This is an implementation of [RFC9180](https://datatracker.ietf.org/doc/rfc9180/
  - AEADs
    - [x] AES-128-GCM
    - [x] AES-256-GCM
-   - [ ] ChaCha20Poly1305
+   - [x] ChaCha20Poly1305
    - [x] Export only
  - KEMs
    - [x] DHKEM(P-256, HKDF-SHA256)

@@ -8,7 +8,7 @@ https://github.com/ctz/hpke-py
 
 import struct
 import enum
-from typing import Any, Tuple, Callable
+from typing import Any, Tuple, Callable, Type
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -211,9 +211,10 @@ class DHKEM_P521_HKDF_SHA512(_DHKEMWeierstrass):
     ID = 0x0012
 
 
-class _AES_GCM:
+class _BaseAEAD:
     NK: int = 0
     NN: int = 0
+    ID: int = 0
 
     def __init__(self, key: bytes, nonce: bytes):
         self.key = key
@@ -222,34 +223,55 @@ class _AES_GCM:
         assert len(self.key) == self.NK
         assert len(self.nonce) == self.NN
 
-    def seal(self, aad: bytes, message: bytes) -> bytes:
+    def _next_nonce(self):
         nonce = xor_bytes(self.nonce, self.seq.to_bytes(self.NN, byteorder="big"))
         self.seq += 1
+        return nonce
 
-        ctx = aead.AESGCM(self.key)
-        return ctx.encrypt(nonce, message, aad)
+    def seal(self, aad: bytes, message: bytes) -> bytes:
+        """abstract"""
 
     def open(self, aad: bytes, ciphertext: bytes) -> bytes:
-        nonce = xor_bytes(self.nonce, self.seq.to_bytes(self.NN, byteorder="big"))
-        self.seq += 1
+        """abstract"""
 
+
+class _AES_GCM(_BaseAEAD):
+    def seal(self, aad: bytes, message: bytes) -> bytes:
         ctx = aead.AESGCM(self.key)
-        return ctx.decrypt(nonce, ciphertext, aad)
+        return ctx.encrypt(self._next_nonce(), message, aad)
+
+    def open(self, aad: bytes, ciphertext: bytes) -> bytes:
+        ctx = aead.AESGCM(self.key)
+        return ctx.decrypt(self._next_nonce(), ciphertext, aad)
 
 
-class AES_128_GCM(_AES_GCM):
+class _AES_128_GCM(_AES_GCM):
     NK = 16
     NN = 12
     ID = 0x0001
 
 
-class AES_256_GCM(_AES_GCM):
+class _AES_256_GCM(_AES_GCM):
     NK = 32
     NN = 12
     ID = 0x0002
 
 
-class ExportOnlyAEAD:
+class _ChaCha20Poly1305(_BaseAEAD):
+    NK = 32
+    NN = 12
+    ID = 0x0003
+
+    def seal(self, aad: bytes, message: bytes) -> bytes:
+        return aead.ChaCha20Poly1305(self.key).encrypt(self._next_nonce(), message, aad)
+
+    def open(self, aad: bytes, ciphertext: bytes) -> bytes:
+        return aead.ChaCha20Poly1305(self.key).decrypt(
+            self._next_nonce(), ciphertext, aad
+        )
+
+
+class _ExportOnlyAEAD(_BaseAEAD):
     """
     The export-only AEAD.
 
@@ -280,7 +302,7 @@ class Context:
 class _Suite:
     KEM: Any = None
     KDF: Any = None
-    AEAD: Any = None
+    AEAD: Type[_BaseAEAD] = _BaseAEAD
 
     @classmethod
     def _key_schedule(cls, mode: Mode, shared_secret: bytes, info: bytes) -> Context:
@@ -546,7 +568,7 @@ class Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA256__AES_128_GCM(_Suite):
 
     KEM = DHKEM_P256_HKDF_SHA256
     KDF = HKDF_SHA256
-    AEAD = AES_128_GCM
+    AEAD = _AES_128_GCM
 
 
 class Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA512__AES_128_GCM(_Suite):
@@ -556,7 +578,7 @@ class Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA512__AES_128_GCM(_Suite):
 
     KEM = DHKEM_P256_HKDF_SHA256
     KDF = HKDF_SHA512
-    AEAD = AES_128_GCM
+    AEAD = _AES_128_GCM
 
 
 class Suite__DHKEM_P521_HKDF_SHA512__HKDF_SHA512__AES_256_GCM(_Suite):
@@ -566,7 +588,17 @@ class Suite__DHKEM_P521_HKDF_SHA512__HKDF_SHA512__AES_256_GCM(_Suite):
 
     KEM = DHKEM_P521_HKDF_SHA512
     KDF = HKDF_SHA512
-    AEAD = AES_256_GCM
+    AEAD = _AES_256_GCM
+
+
+class Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA256__ChaCha20Poly1305(_Suite):
+    """
+    This is DHKEM(P-256, HKDF-SHA256), HKDF-SHA256, ChaCha20Poly1305
+    """
+
+    KEM = DHKEM_P256_HKDF_SHA256
+    KDF = HKDF_SHA256
+    AEAD = _ChaCha20Poly1305
 
 
 class Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA256__ExportOnly(_Suite):
@@ -576,7 +608,7 @@ class Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA256__ExportOnly(_Suite):
 
     KEM = DHKEM_P256_HKDF_SHA256
     KDF = HKDF_SHA256
-    AEAD = ExportOnlyAEAD
+    AEAD = _ExportOnlyAEAD
 
 
 class Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA512__ExportOnly(_Suite):
@@ -586,4 +618,4 @@ class Suite__DHKEM_P256_HKDF_SHA256__HKDF_SHA512__ExportOnly(_Suite):
 
     KEM = DHKEM_P256_HKDF_SHA256
     KDF = HKDF_SHA512
-    AEAD = ExportOnlyAEAD
+    AEAD = _ExportOnlyAEAD
