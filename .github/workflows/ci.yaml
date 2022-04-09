@@ -30,8 +30,8 @@ jobs:
         run: poetry run black --check hpke tests
       - name: Check types
         run: poetry run mypy hpke
-      - name: Run pytest
-        run: poetry run pytest --cov hpke tests
+      - name: Run tests and ensure 100% line coverage
+        run: poetry run pytest --cov-fail-under=100 --cov hpke tests
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v2.2.4
         with:
