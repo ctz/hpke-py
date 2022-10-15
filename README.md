@@ -1,7 +1,8 @@
-# hpke.py
+Forked from [ctz/hpke-py](https://github.com/ctz/hpke-py).
 
-![CI status](https://github.com/ctz/hpke-py/actions/workflows/ci.yaml/badge.svg)
-![PyPI version](https://shields.io/pypi/v/hpke)
+**This package is only for an experimental [COSE-HPKE](https://datatracker.ietf.org/doc/html/draft-ietf-cose-hpke-02) implementation on [dajiaji/python-cwt](https://github.com/dajiaji/python-cwt). DO NOT INSTALL IT.**
+
+# pyhpke
 
 This is an implementation of [RFC9180](https://datatracker.ietf.org/doc/rfc9180/) in python3, using
 [cryptography.io](https://cryptography.io) for the underlying cryptography.
