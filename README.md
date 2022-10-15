@@ -30,9 +30,9 @@ This is an implementation of [RFC9180](https://datatracker.ietf.org/doc/rfc9180/
    - [x] HKDF-SHA384
    - [x] HKDF-SHA512
 
-## Author
+## Original Author
 Joseph Birr-Pixton <jpixton@gmail.com>
 
 ## License
-hpke.py is licensed under the Apache License, Version 2.0. See
+pyhpke is licensed under the Apache License, Version 2.0. See
 [LICENSE](LICENSE) for the full license text.
