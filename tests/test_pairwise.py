@@ -3,7 +3,7 @@ import os
 import pytest
 import cryptography.exceptions
 
-import hpke
+import pyhpke as hpke
 
 
 aead_suites = [

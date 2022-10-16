@@ -1,15 +1,15 @@
 [tool.poetry]
-name = "hpke"
-version = "0.2.0"
+name = "pyhpke"
+version = "0.1.0"
 description = "HPKE implementation"
-authors = ["Joseph Birr-Pixton <jpixton@gmail.com>"]
+authors = ["Ajitomi Daisuke <dajiaji@gmail.com>"]
 license = "Apache-2.0"
-repository = "https://github.com/ctz/hpke-py"
+repository = "https://github.com/dajiaji/pyhpke"
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.8"
-cryptography = "^3.4.7"
+cryptography = ">=3.4.7,<39"
 
 [tool.poetry.dev-dependencies]
 coverage = {version = "^5.5", extras = ["toml"]}

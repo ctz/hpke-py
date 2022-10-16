@@ -4,7 +4,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.backends import default_backend
 
-import hpke
+import pyhpke as hpke
 
 known_answers = tuple(json.load(open("tests/known_answers.json")))
 
