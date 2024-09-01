@@ -20,7 +20,7 @@ This is an implementation of [RFC9180](https://datatracker.ietf.org/doc/rfc9180/
    - [x] Export only
  - KEMs
    - [x] DHKEM(P-256, HKDF-SHA256)
-   - [ ] DHKEM(P-384, HKDF-SHA384)
+   - [x] DHKEM(P-384, HKDF-SHA384)
    - [x] DHKEM(P-521, HKDF-SHA512)
    - [ ] DHKEM(X25519, HKDF-SHA256)
    - [ ] DHKEM(X448, HKDF-SHA512)
