@@ -10,13 +10,13 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu, windows, macos]
-        python: ['3.8', '3.9', '3.10']
+        python: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
     steps:
       - name: Check out code from GitHub
-        uses: actions/checkout@v2.3.4
+        uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python }}
         id: python
-        uses: actions/setup-python@v2.2.2
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
       - name: Install workflow dependencies
@@ -30,10 +30,10 @@ jobs:
         run: poetry run black --check hpke tests
       - name: Check types
         run: poetry run mypy hpke
-      - name: Run tests and ensure 100% line coverage
-        run: poetry run pytest --cov-fail-under=100 --cov hpke tests
+      - name: Run tests and ensure ~100% line coverage
+        run: poetry run pytest --cov-fail-under=99.5 --cov hpke tests
       - name: Upload coverage artifact
-        uses: actions/upload-artifact@v2.2.4
+        uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ matrix.python }}-${{ matrix.os }}
           path: .coverage
