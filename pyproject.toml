@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "hpke"
-version = "0.3.1"
+version = "0.3.2"
 description = "HPKE implementation"
 authors = ["Joseph Birr-Pixton <jpixton@gmail.com>"]
 license = "Apache-2.0"
@@ -9,7 +9,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.8"
-cryptography = "^42"
+cryptography = "^43"
 
 [tool.poetry.dev-dependencies]
 coverage = {version = "^5.5", extras = ["toml"]}
